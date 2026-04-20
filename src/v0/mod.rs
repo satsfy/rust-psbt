@@ -51,7 +51,10 @@ impl Psbt {
                 match self.output_type(i) {
                     Ok(OutputType::Bare) => return Err(SignerChecksError::NonWitnessSig),
                     Ok(_) => {}
-                    Err(_) => {} // TODO: Is this correct?
+                    // An unrecognised output type (e.g. future soft-fork) must be treated
+                    // as fail-closed: we cannot determine whether it is safe to sign, so
+                    // we reject rather than silently proceeding.
+                    Err(_) => return Err(SignerChecksError::UnknownOutputType),
                 }
             }
 
@@ -126,6 +129,8 @@ pub enum SignerChecksError {
     WitnessScriptMismatchWsh,
     /// Nested segwit p2wsh script_pubkey did not match redeem script hash.
     WitnessScriptMismatchShWsh,
+    /// The output type of a witness input could not be determined.
+    UnknownOutputType,
 }
 
 impl fmt::Display for SignerChecksError {
@@ -144,6 +149,8 @@ impl fmt::Display for SignerChecksError {
                 write!(f, "native segwit p2wsh script_pubkey did not match witness script hash"),
             WitnessScriptMismatchShWsh =>
                 write!(f, "nested segwit p2wsh script_pubkey did not match redeem script hash"),
+            UnknownOutputType =>
+                write!(f, "could not determine the output type for a witness input"),
         }
     }
 }

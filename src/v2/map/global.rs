@@ -266,8 +266,7 @@ impl Global {
                     if !pair.key.key.is_empty() {
                         let xpub = Xpub::decode(&pair.key.key)?;
                         if pair.value.is_empty() {
-                            // TODO: keypair value is empty, consider adding a better error type.
-                            return Err(InsertPairError::InvalidKeyDataNotEmpty(pair.key));
+                            return Err(InsertPairError::XpubValueEmpty);
                         }
                         if pair.value.len() < 4 {
                             // TODO: Add better error here.
@@ -635,6 +634,8 @@ pub enum InsertPairError {
     XpubInvalidFingerprint,
     /// PSBT_GLOBAL_XPUB: derivation path must be a list of 32 byte varints.
     XpubInvalidPath(usize),
+    /// PSBT_GLOBAL_XPUB: value must not be empty.
+    XpubValueEmpty,
     /// PSBT_GLOBAL_XPUB: Failed to decode a BIP-32 type.
     Bip32(bip32::Error),
     /// PSBT_GLOBAL_XPUB: xpubs must be unique.
@@ -674,6 +675,7 @@ impl fmt::Display for InsertPairError {
                 "PSBT_GLOBAL_XPUB: derivation path must be a list of 32 byte varints: {}",
                 len
             ),
+            XpubValueEmpty => write!(f, "PSBT_GLOBAL_XPUB: keypair value must not be empty"),
             Bip32(ref e) => write_err!(f, "PSBT_GLOBAL_XPUB: Failed to decode a BIP-32 type"; e),
             DuplicateXpub((fingerprint, ref derivation_path)) => write!(
                 f,
@@ -709,6 +711,7 @@ impl std::error::Error for InsertPairError {
             | WrongVersion(_)
             | XpubInvalidFingerprint
             | XpubInvalidPath(_)
+            | XpubValueEmpty
             | DuplicateXpub(_)
             | InvalidProprietaryKey
             | ExcludedKey { .. }

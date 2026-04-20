@@ -137,8 +137,6 @@ impl Global {
         self.tx_modifiable_flags & OUTPUTS_MODIFIABLE > 0
     }
 
-    // TODO: Investigate if we should be using this function?
-    #[allow(dead_code)]
     pub(crate) fn has_sighash_single(&self) -> bool {
         self.tx_modifiable_flags & SIGHASH_SINGLE > 0
     }
@@ -409,6 +407,11 @@ impl Global {
 
         // BIP 174: The Combiner must remove any duplicate key-value pairs, in accordance with
         //          the specification. It can pick arbitrarily when conflicts occur.
+
+        // Propagate the SIGHASH_SINGLE flag before any fields of `other` are moved.
+        if other.has_sighash_single() {
+            self.set_sighash_single_flag();
+        }
 
         // Merging xpubs
         for (xpub, (fingerprint1, derivation1)) in other.xpubs {

@@ -976,6 +976,9 @@ impl Psbt {
         use PartialSigsSighashTypeError::*;
 
         for (input_index, input) in self.inputs.iter().enumerate() {
+            if !input.has_sig_data() {
+                continue;
+            }
             let target_ecdsa_sighash_ty = match input.sighash_type {
                 Some(psbt_hash_ty) => psbt_hash_ty
                     .ecdsa_hash_ty()

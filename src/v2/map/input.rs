@@ -358,9 +358,8 @@ impl Input {
         self.final_script_sig.is_some() && self.final_script_witness.is_some()
     }
 
-    /// TODO: Use this.
-    #[allow(dead_code)]
-    fn has_sig_data(&self) -> bool {
+    /// Returns true if this input has any partial or taproot signature data.
+    pub(crate) fn has_sig_data(&self) -> bool {
         !(self.partial_sigs.is_empty()
             && self.tap_key_sig.is_none()
             && self.tap_script_sigs.is_empty())

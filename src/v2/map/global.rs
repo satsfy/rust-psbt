@@ -269,8 +269,7 @@ impl Global {
                             return Err(InsertPairError::XpubValueEmpty);
                         }
                         if pair.value.len() < 4 {
-                            // TODO: Add better error here.
-                            return Err(InsertPairError::XpubInvalidFingerprint);
+                            return Err(InsertPairError::XpubValueTooShort(pair.value.len()));
                         }
                         // TODO: Can we restrict the value further?
                         if pair.value.len() % 4 != 0 {
@@ -632,6 +631,8 @@ pub enum InsertPairError {
     WrongVersion(u32),
     /// PSBT_GLOBAL_XPUB: Must contain 4 bytes for the xpub fingerprint.
     XpubInvalidFingerprint,
+    /// PSBT_GLOBAL_XPUB: value must contain at least 4 bytes for the xpub fingerprint.
+    XpubValueTooShort(usize),
     /// PSBT_GLOBAL_XPUB: derivation path must be a list of 32 byte varints.
     XpubInvalidPath(usize),
     /// PSBT_GLOBAL_XPUB: value must not be empty.
@@ -670,6 +671,11 @@ impl fmt::Display for InsertPairError {
             XpubInvalidFingerprint => {
                 write!(f, "PSBT_GLOBAL_XPUB: xpub fingerprint must be 4 bytes")
             }
+            XpubValueTooShort(got) => write!(
+                f,
+                "PSBT_GLOBAL_XPUB: value must contain at least 4 bytes for the xpub fingerprint, got: {}",
+                got
+            ),
             XpubInvalidPath(len) => write!(
                 f,
                 "PSBT_GLOBAL_XPUB: derivation path must be a list of 32 byte varints: {}",
@@ -710,6 +716,7 @@ impl std::error::Error for InsertPairError {
             | ValueWrongLength(..)
             | WrongVersion(_)
             | XpubInvalidFingerprint
+            | XpubValueTooShort(_)
             | XpubInvalidPath(_)
             | XpubValueEmpty
             | DuplicateXpub(_)

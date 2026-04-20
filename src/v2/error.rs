@@ -18,11 +18,9 @@ use crate::v2::map::{global, input, output};
 #[non_exhaustive]
 pub enum DeserializeError {
     /// Invalid magic bytes, expected the ASCII for "psbt" serialized in most significant byte order.
-    // TODO: Consider adding the invalid bytes.
-    InvalidMagic,
+    InvalidMagic([u8; 4]),
     /// The separator for a PSBT must be `0xff`.
-    // TODO: Consider adding the invalid separator byte.
-    InvalidSeparator,
+    InvalidSeparator(Option<u8>),
     /// Signals that there are no more key-value pairs in a key-value map.
     NoMorePairs,
     /// Error decoding the global map.
@@ -34,12 +32,35 @@ pub enum DeserializeError {
 }
 
 impl fmt::Display for DeserializeError {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result { todo!() }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use DeserializeError::*;
+
+        match *self {
+            InvalidMagic(ref magic) => write!(f, "invalid magic bytes: {:?}", magic),
+            InvalidSeparator(Some(separator)) => {
+                write!(f, "invalid separator byte: 0x{:02x}", separator)
+            }
+            InvalidSeparator(None) => write!(f, "invalid separator byte: missing"),
+            NoMorePairs => write!(f, "no more key-value pairs for this psbt map"),
+            DecodeGlobal(ref e) => write_err!(f, "error decoding the global map"; e),
+            DecodeInput(ref e) => write_err!(f, "error decoding an input map"; e),
+            DecodeOutput(ref e) => write_err!(f, "error decoding an output map"; e),
+        }
+    }
 }
 
 #[cfg(feature = "std")]
 impl std::error::Error for DeserializeError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { todo!() }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        use DeserializeError::*;
+
+        match *self {
+            InvalidMagic(_) | InvalidSeparator(_) | NoMorePairs => None,
+            DecodeGlobal(ref e) => Some(e),
+            DecodeInput(ref e) => Some(e),
+            DecodeOutput(ref e) => Some(e),
+        }
+    }
 }
 
 impl From<global::DecodeError> for DeserializeError {

@@ -1,0 +1,117 @@
+---
+# rust-psbt CI (GitHub Actions)
+#
+# CI job and task structure mirrors the Forgejo CI.
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+name: Continuous Integration
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test-stable:
+    name: Test (stable, ${{ matrix.dep }} deps)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dep: [minimal, recent]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        if: matrix.dep == 'minimal'
+      - name: Resolve minimal deps
+        if: matrix.dep == 'minimal'
+        run: cargo generate-lockfile -Z minimal-versions
+      - uses: dtolnay/rust-toolchain@1.94.1
+      - name: Test (exact features)
+        run: cargo test --features "std,miniscript,serde"
+      - name: Test (default features)
+        run: cargo test
+
+  test-msrv:
+    name: Test (MSRV 1.74.0, ${{ matrix.dep }} deps)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dep: [minimal, recent]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        if: matrix.dep == 'minimal'
+      - name: Resolve minimal deps
+        if: matrix.dep == 'minimal'
+        run: cargo generate-lockfile -Z minimal-versions
+      - uses: dtolnay/rust-toolchain@1.74.0
+      - name: Test (exact features)
+        run: cargo test --features "std,miniscript,serde"
+      - name: Test (default features)
+        run: cargo test
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94.1
+        with:
+          components: clippy
+      - name: Clippy (default features)
+        run: cargo clippy -- -D warnings
+      - name: Clippy (all features)
+        run: cargo clippy --all-features -- -D warnings
+
+  fmt:
+    name: Fmt check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94.1
+      - name: Build docs
+        run: cargo doc --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
+  docsrs:
+    name: Docs (docs.rs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Build docs (docsrs)
+        run: cargo doc --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: "--cfg docsrs -D warnings"
+          RUSTFLAGS: "--cfg docsrs"
+
+  examples:
+    name: Examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94.1
+      - name: Run v0 example
+        run: cargo run --example v0 --features "std,rand"
+      - name: Run v2 example
+        run: cargo run --example v2 --features "std"
+      - name: Run v2-separate-creator-constructor example
+        run: cargo run --example v2-separate-creator-constructor --features "std"

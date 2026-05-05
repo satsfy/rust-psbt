@@ -386,11 +386,10 @@ impl fmt::Display for Error {
         use Error::*;
 
         match *self {
-            // TODO: Loads of error messages are capitalized, they should not be.
-            FundingUtxo(ref e) => write_err!(f, "Finalizer missing funding UTXO"; e),
+            FundingUtxo(ref e) => write_err!(f, "finalizer missing funding UTXO"; e),
             DetermineLockTime(ref e) =>
                 write_err!(f, "finalizer must be able to determine the lock time"; e),
-            PartialSigsSighashType(ref e) => write_err!(f, "Finalizer sighash type error"; e),
+            PartialSigsSighashType(ref e) => write_err!(f, "finalizer sighash type error"; e),
         }
     }
 }

@@ -206,9 +206,9 @@ impl fmt::Display for InterpreterCheckInputError {
 
         match *self {
             Constructor { input_index, ref error } =>
-                write_err!(f, "Interpreter constructor failed for input {}", input_index; error),
+                write_err!(f, "interpreter constructor failed for input {}", input_index; error),
             Satisfaction { input_index, ref error } =>
-                write_err!(f, "Interpreter satisfaction failed for input {}", input_index; error),
+                write_err!(f, "interpreter satisfaction failed for input {}", input_index; error),
         }
     }
 }

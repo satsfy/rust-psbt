@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: CC0-1.0
 
+use core::cmp::Ordering;
 use core::convert::TryFrom;
 use core::fmt;
 
@@ -429,19 +430,18 @@ impl Global {
 
                     let (fingerprint2, derivation2) = entry.get().clone();
 
-                    if (derivation1 == derivation2 && fingerprint1 == fingerprint2)
-                        || (derivation1.len() < derivation2.len()
-                            && derivation1[..]
-                                == derivation2[derivation2.len() - derivation1.len()..])
-                    {
-                        continue;
-                    } else if derivation2[..]
-                        == derivation1[derivation1.len() - derivation2.len()..]
-                    {
-                        entry.insert((fingerprint1, derivation1));
+                    if derivation1 == derivation2 && fingerprint1 == fingerprint2 {
                         continue;
                     }
-                    return Err(InconsistentKeySourcesError(xpub).into());
+
+                    match derivation1.len().cmp(&derivation2.len()) {
+                        Ordering::Greater if derivation1[..].ends_with(&derivation2[..]) => {
+                            entry.insert((fingerprint1, derivation1));
+                            continue;
+                        }
+                        Ordering::Less if derivation2[..].ends_with(&derivation1[..]) => continue,
+                        _ => return Err(InconsistentKeySourcesError(xpub).into()),
+                    }
                 }
             }
         }
@@ -787,6 +787,10 @@ impl From<InconsistentKeySourcesError> for CombineError {
 
 #[cfg(test)]
 mod tests {
+    use bitcoin::bip32::Xpriv;
+    use bitcoin::key::Secp256k1;
+    use bitcoin::NetworkKind;
+
     use super::*;
 
     #[test]
@@ -800,5 +804,63 @@ mod tests {
         from_pairs.push(0x00);
 
         assert_eq!(from_pairs, global.serialize_map());
+    }
+
+    fn assert_xpub_combine_commutative(
+        label: &str,
+        a_source: (Fingerprint, DerivationPath),
+        b_source: (Fingerprint, DerivationPath),
+    ) {
+        let secp = Secp256k1::new();
+        let master = Xpriv::new_master(NetworkKind::Main, &[0u8; 16]).unwrap();
+        let xpub = Xpub::from_priv(&secp, &master);
+
+        let mut a = Global::default();
+        a.xpubs.insert(xpub, a_source);
+        let mut b = Global::default();
+        b.xpubs.insert(xpub, b_source);
+
+        let mut ab = a.clone();
+        let res_ab = ab.combine(b.clone());
+        let mut ba = b.clone();
+        let res_ba = ba.combine(a);
+        assert_eq!(res_ab.is_ok(), res_ba.is_ok(), "case: {}", label);
+        if res_ab.is_ok() {
+            assert_eq!(ab.xpubs, ba.xpubs, "case: {}: xpub maps diverged", label);
+        }
+    }
+
+    #[test]
+    fn combine_globals_commutative_xpub_conflict() {
+        let fp = Fingerprint::default();
+        let other_fp = Fingerprint::from([1u8; 4]);
+        let c0 = ChildNumber::from_normal_idx(0).unwrap();
+        let c1 = ChildNumber::from_normal_idx(1).unwrap();
+
+        assert_xpub_combine_commutative(
+            "identical fp and path",
+            (fp, vec![c1].into()),
+            (fp, vec![c1].into()),
+        );
+        assert_xpub_combine_commutative(
+            "equal paths, different fingerprints",
+            (fp, vec![c1].into()),
+            (other_fp, vec![c1].into()),
+        );
+        assert_xpub_combine_commutative(
+            "same length, different paths",
+            (fp, vec![c0].into()),
+            (fp, vec![c1].into()),
+        );
+        assert_xpub_combine_commutative(
+            "shorter is strict suffix of longer",
+            (fp, vec![c0, c1].into()),
+            (fp, vec![c1].into()),
+        );
+        assert_xpub_combine_commutative(
+            "shorter not a suffix of longer",
+            (fp, vec![c1, c0].into()),
+            (fp, vec![c1].into()),
+        );
     }
 }

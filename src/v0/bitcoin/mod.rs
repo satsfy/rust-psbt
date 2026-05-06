@@ -252,19 +252,19 @@ impl Psbt {
 
                     let (fingerprint2, derivation2) = entry.get().clone();
 
-                    if (derivation1 == derivation2 && fingerprint1 == fingerprint2)
-                        || (derivation1.len() < derivation2.len()
-                            && derivation1[..]
-                                == derivation2[derivation2.len() - derivation1.len()..])
-                    {
-                        continue;
-                    } else if derivation2[..]
-                        == derivation1[derivation1.len() - derivation2.len()..]
-                    {
-                        entry.insert((fingerprint1, derivation1));
+                    if derivation1 == derivation2 && fingerprint1 == fingerprint2 {
                         continue;
                     }
-                    return Err(Error::CombineInconsistentKeySources(Box::new(xpub)));
+
+                    match derivation1.len().cmp(&derivation2.len()) {
+                        cmp::Ordering::Greater if derivation1[..].ends_with(&derivation2[..]) => {
+                            entry.insert((fingerprint1, derivation1));
+                            continue;
+                        }
+                        cmp::Ordering::Less if derivation2[..].ends_with(&derivation1[..]) =>
+                            continue,
+                        _ => return Err(Error::CombineInconsistentKeySources(Box::new(xpub))),
+                    }
                 }
             }
         }
@@ -2203,6 +2203,36 @@ mod tests {
         assert_eq!(psbt1, psbt_combined);
     }
 
+    fn assert_xpub_combine_commutative(
+        label: &str,
+        a_source: (bip32::Fingerprint, bip32::DerivationPath),
+        b_source: (bip32::Fingerprint, bip32::DerivationPath),
+    ) {
+        let secp = Secp256k1::new();
+        let master = Xpriv::new_master(NetworkKind::Main, &[0u8; 16]).unwrap();
+        let xpub = Xpub::from_priv(&secp, &master);
+
+        let tx = Transaction {
+            version: transaction::Version::TWO,
+            lock_time: absolute::LockTime::ZERO,
+            input: vec![],
+            output: vec![],
+        };
+        let mut a = Psbt::from_unsigned_tx(tx.clone()).unwrap();
+        a.xpub.insert(xpub, a_source);
+        let mut b = Psbt::from_unsigned_tx(tx).unwrap();
+        b.xpub.insert(xpub, b_source);
+
+        let mut ab = a.clone();
+        let res_ab = ab.combine(b.clone());
+        let mut ba = b.clone();
+        let res_ba = ba.combine(a);
+        assert_eq!(res_ab.is_ok(), res_ba.is_ok(), "case: {}", label);
+        if res_ab.is_ok() {
+            assert_eq!(ab.xpub, ba.xpub, "case: {}: xpub maps diverged", label);
+        }
+    }
+
     #[test]
     fn combine_psbts_commutative() {
         let mut psbt1 = hex_psbt(include_str!("../../../tests/data/psbt1.hex")).unwrap();
@@ -2211,10 +2241,43 @@ mod tests {
         let psbt1_clone = psbt1.clone();
         let psbt2_clone = psbt2.clone();
 
+        // exercise the `Vacant` entry path
         psbt1.combine(psbt2_clone).expect("psbt1 combine to succeed");
         psbt2.combine(psbt1_clone).expect("psbt2 combine to succeed");
 
         assert_eq!(psbt1, psbt2);
+
+        // use minimal PSBTs to exercise the `Occupied` path
+        let fp = bip32::Fingerprint::default();
+        let other_fp = bip32::Fingerprint::from([1u8; 4]);
+        let c0 = ChildNumber::from_normal_idx(0).unwrap();
+        let c1 = ChildNumber::from_normal_idx(1).unwrap();
+
+        assert_xpub_combine_commutative(
+            "identical fp and path",
+            (fp, vec![c1].into()),
+            (fp, vec![c1].into()),
+        );
+        assert_xpub_combine_commutative(
+            "equal paths, different fingerprints",
+            (fp, vec![c1].into()),
+            (other_fp, vec![c1].into()),
+        );
+        assert_xpub_combine_commutative(
+            "same length, different paths",
+            (fp, vec![c0].into()),
+            (fp, vec![c1].into()),
+        );
+        assert_xpub_combine_commutative(
+            "shorter is strict suffix of longer",
+            (fp, vec![c0, c1].into()),
+            (fp, vec![c1].into()),
+        );
+        assert_xpub_combine_commutative(
+            "shorter not a suffix of longer",
+            (fp, vec![c1, c0].into()),
+            (fp, vec![c1].into()),
+        );
     }
 
     #[cfg(feature = "rand")]

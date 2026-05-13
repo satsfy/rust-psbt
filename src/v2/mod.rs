@@ -45,6 +45,7 @@ use bitcoin::{ecdsa, transaction, Amount, Sequence, Transaction, TxOut, Txid};
 
 use crate::error::{write_err, FeeError, FundingUtxoError};
 use crate::prelude::*;
+use crate::v0;
 use crate::v2::map::Map;
 
 #[rustfmt::skip]                // Keep public exports separate.
@@ -405,18 +406,39 @@ impl Updater {
         Ok(self)
     }
 
-    // /// Converts the inner PSBT v2 to a PSBT v0.
-    // pub fn into_psbt_v0(self) -> v0::Psbt {
-    //     let unsigned_tx =
-    //         self.0.unsigned_tx().expect("Updater guarantees lock time can be determined");
-    //     let psbt = self.psbt();
+    /// Converts the inner PSBT v2 to a PSBT v0.
+    ///
+    /// This conversion is lossy. PSBT v2 fields with no v0 equivalent are dropped:
+    /// global map: fallback_lock_time, tx_modifiable_flags, input_count and output_count.
+    /// Drops also silent payments fields sp_dleq_proofs and sp_ecdh_shares.
+    /// input map: previous_txid, spent_output_index, sequence, min_time, min_height.
+    /// output map: amount, script_pubkey and silent payments fields sp_v0_label, sp_v0_info.
+    pub fn into_psbt_v0(self) -> v0::Psbt {
+        let unsigned_tx =
+            self.0.unsigned_tx().expect("Updater guarantees lock time can be determined");
+        let psbt = self.psbt();
+        let inputs = psbt.inputs.into_iter().map(|input| input.into_v0()).collect::<Vec<_>>();
+        let outputs = psbt.outputs.into_iter().map(|output| output.into_v0()).collect::<Vec<_>>();
 
-    //     let global = psbt.global.into_v0(unsigned_tx);
-    //     let inputs = psbt.inputs.into_iter().map(|input| input.into_v0()).collect();
-    //     let outputs = psbt.outputs.into_iter().map(|output| output.into_v0()).collect();
+        let global = psbt.global;
+        let proprietary = global
+            .proprietaries
+            .into_iter()
+            .map(|(k, v)| (map::raw_proprietary_v2_to_v0(k), v))
+            .collect();
+        let unknown =
+            global.unknowns.into_iter().map(|(k, v)| (map::raw_key_v2_to_v0(k), v)).collect();
 
-    //     v0::Psbt { global, inputs, outputs }
-    // }
+        v0::Psbt {
+            unsigned_tx,
+            version: 0,
+            xpub: global.xpubs,
+            proprietary,
+            unknown,
+            inputs,
+            outputs,
+        }
+    }
 
     /// Returns the inner [`Psbt`].
     pub fn psbt(self) -> Psbt { self.0 }

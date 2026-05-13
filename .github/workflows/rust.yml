@@ -1,0 +1,57 @@
+---
+# rust-psbt CI
+#
+# CI job and task structure is optimized for developer debugging. Not runner
+# minutes or parallelism.
+
+on:   # yamllint disable-line rule:truthy
+  push:
+  pull_request:
+
+name: Continuous Integration
+
+jobs:
+  Test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [stable, msrv]
+        dep: [minimal, recent]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Context required for bisectability tests.
+          persist-credentials: false
+      - name: Install rbmt
+        run: |
+          cargo install --locked --git https://github.com/rust-bitcoin/rust-bitcoin-maintainer-tools.git --rev "$(cat rbmt-version)" cargo-rbmt
+          cargo rbmt toolchains
+      - name: "Run tests"
+        env:
+          BASELINE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git switch -C ci-head HEAD
+          if [ -n "$BASE_REF" ]; then
+            git fetch --no-tags origin "$BASE_REF"
+          fi
+          if ! git cat-file -e "$BASELINE^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "$BASELINE"
+          fi
+          cargo rbmt --lock-file ${{ matrix.dep }} test --toolchain ${{ matrix.toolchain }} --baseline "$BASELINE"
+
+  Check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        command: [lint, api, docs, docsrs, integration, "fmt --check"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install rbmt
+        run: |
+          cargo install --locked --git https://github.com/rust-bitcoin/rust-bitcoin-maintainer-tools.git --rev "$(cat rbmt-version)" cargo-rbmt
+          cargo rbmt toolchains
+      - name: "Run ${{ matrix.command }}"
+        run: cargo rbmt ${{ matrix.command }}
